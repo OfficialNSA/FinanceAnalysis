@@ -13,10 +13,15 @@
 
 # Contact the creator via chromsuport@gmail.com
 
+
+# License and warranty hint in the running program
 print("""Financial Analysis  Copyright (C) 2022  Josua Gunzenhauser
 This program comes with ABSOLUTELY NO WARRANTY; for details see ./COPYING or <https://www.gnu.org/licenses/>
 This is free software, and you are welcome to redistribute it
-under certain conditions; see ./COPYING or <https://www.gnu.org/licenses/> for details.""")
+under certain conditions; see ./COPYING or <https://www.gnu.org/licenses/> for details.
+
+
+""")
 
 from fileinput import filename
 import string
@@ -140,7 +145,7 @@ def analyse_month(data):
     #Move the new analysis to the second page (first will be overall analysis)
     sheets=book._sheets
 
-    #Analysis Sheet
+    #Bring the newest sheet to the front (pop from end, insert in front)
     sheet = sheets.pop(len(book._sheets) - 1)
     sheets.insert(1, sheet)
 
@@ -153,19 +158,37 @@ def analyse_month(data):
 #For European number notation
 locale.setlocale(locale.LC_NUMERIC, "de")
 
-os.remove("Analyse.xlsx")
-pd.DataFrame().to_excel("Analyse.xlsx")
+# Create the Excel from scratch, makes the software easier to understand/maintain
+try:
+    os.remove("Analyse.xlsx")
+except:
+    pass
 
+book = Workbook()
+book.save("Analyse.xlsx")
+
+# Create files and directories if they are not there already
+
+if not os.path.isfile('categories.json'):
+    categories_file = open('categories.json', 'w')
+    json.dump({"categories": [],"receiver": {},"reason": {}}, categories_file)
+    categories_file.close()
+
+if not os.path.isdir('Bank Exports'):
+    os.mkdir("Bank Exports")
+
+if not os.path.isdir('Categorized Exports'):
+    os.mkdir("Categorized Exports")
+
+#Load already assigned categories
 categories_file = open('categories.json')
 categories_content = json.load(categories_file)
-
 categories_file.close()
-
 categories = categories_content["categories"]
-
 receivers = categories_content["receiver"]
 reasons = categories_content["reason"]
 
+#Go through all Exports and categorize them per prompt or per already assigned category if not already done previously
 directory = os.fsencode("Bank Exports")
 
 for file in os.listdir(directory):
@@ -183,15 +206,12 @@ for file in os.listdir(directory):
     else:
         print(f"{filename} already exists, no need to analyse")
 
-#Write added categories to json
+#Write added categories back to json for next time
 categories_content["categories"] = categories
-
 categories_content["receiver"] = receivers
 categories_content["reason"] = reasons
-
 categories_file = open('categories.json', "w")
 json.dump(categories_content, categories_file)
-
 categories_file.close()
 
 directory = os.fsencode("Categorized Exports")
@@ -208,6 +228,11 @@ for file in os.listdir(directory):
 
 sum = pd.DataFrame()
 month_sums = []
+
+#Abort if there is no data
+if len(complete_data) == 0:
+    print("\nEs konnten keine Daten gefunden werden, bitte Die Bankauszüge im csv Format in 'Bank Exports' ablegen")
+    exit()
 
 for key in complete_data.keys():
 
@@ -257,11 +282,10 @@ sum_cost.to_excel(writer, sheet_name="Komplett_Analyse", startrow=0, startcol=2)
 month_sums.to_excel(writer, sheet_name="Komplett_Analyse", startrow=0, startcol=15)
 avg_sum.to_excel(writer, sheet_name="Komplett_Analyse", startrow=max(sum_income.shape[0], sum_cost.shape[0])+4, startcol=1)
 
-
 book = writer.book
 
 analysesheet = book["Komplett_Analyse"]
-analysesheet.cell(row=max(sum_income.shape[0], sum_cost.shape[0])+3, column=1).value = "Monatlich"
+analysesheet.cell(row=max(sum_income.shape[0], sum_cost.shape[0])+3, column=2).value = "Monatlich"
 
 pie_income = PieChart()
 labels_income = Reference(analysesheet, min_col=1, min_row=2, max_row=(1+sum_income.shape[0]))
@@ -309,6 +333,9 @@ sheets=book._sheets
 #Analysis Sheet
 sheet = sheets.pop(len(book._sheets) - 1)
 sheets.insert(1, sheet)
+
+#Remove the empty default sheet from creation
+book.remove(book.active)
 
 book.save("Analyse.xlsx")
 
