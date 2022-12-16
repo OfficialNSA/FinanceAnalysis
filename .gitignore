@@ -3,3 +3,7 @@
 /private
 Analyse.xlsx
 categories.json
+ignore.json
+
+#Open Excel
+~$**

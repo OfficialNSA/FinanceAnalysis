@@ -46,11 +46,16 @@ def categorize_row(row):
 
     assigned = False
 
-    for reason in reasons.keys():
-        if(str(reason).lower() in str(row["Verwendungszweck"]).lower()):
-            row["category"] = reasons[reason]
-            assigned = True
-            break
+    if(row["IBAN Zahlungsbeteiligter"] in ignore_receivers):
+        row["category"] = "ignore"
+        assigned = True
+
+    if(not assigned):
+        for reason in reasons.keys():
+            if(str(reason).lower() in str(row["Verwendungszweck"]).lower()):
+                row["category"] = reasons[reason]
+                assigned = True
+                break
 
     if(not assigned):
         for receiver in receivers.keys():
@@ -66,6 +71,9 @@ def categorize_row(row):
         print(row.drop(labels=["Bezeichnung Auftragskonto", "IBAN Auftragskonto", "BIC Auftragskonto", "Bankname Auftragskonto", "Buchungstag", "IBAN Zahlungsbeteiligter", "BIC (SWIFT-Code) Zahlungsbeteiligter", "Waehrung", "Saldo nach Buchung", "Bemerkung", "Kategorie", "Steuerrelevant", "Glaeubiger ID", "Mandatsreferenz"]))
         print("\nWelche Kategorie hat dieser Umsatz? Bitte den Index angeben oder neue Kategorie tippen")
         category_input = input(str(list(zip(range(len(categories)), categories))) + "\n")
+
+        if(category_input == ""):
+            category_input = "0"
 
         try:
             #Set the category from existing (index entered)
@@ -102,7 +110,7 @@ def analyse_month(data):
     #Delete all unwanted information so that it doesn't appear after grouping
     data = data.drop(['Bezeichnung Auftragskonto', 'IBAN Auftragskonto', 'BIC Auftragskonto', 'Bankname Auftragskonto', 'Buchungstag', 'Valutadatum', 'Name Zahlungsbeteiligter', 'IBAN Zahlungsbeteiligter', 'BIC (SWIFT-Code) Zahlungsbeteiligter', 'Buchungstext', 'Verwendungszweck', 'Waehrung', 'Saldo nach Buchung', 'Bemerkung', 'Kategorie', 'Steuerrelevant', 'Glaeubiger ID', 'Mandatsreferenz'], axis=1)
 
-    data = data.groupby("category").sum().sort_values("Betrag")
+    data = data.groupby("category").sum().sort_values("Betrag").drop("ignore")
     income = data[data["Betrag"] > 0]
     cost = data[data["Betrag"] < 0]
 
@@ -174,6 +182,11 @@ if not os.path.isfile('categories.json'):
     json.dump({"categories": [],"receiver": {},"reason": {}}, categories_file)
     categories_file.close()
 
+if not os.path.isfile('ignore.json'):
+    categories_file = open('categories.json', 'w')
+    json.dump({"receiverIBAN": [],"reason": []}, categories_file)
+    categories_file.close()
+
 if not os.path.isdir('Bank Exports'):
     os.mkdir("Bank Exports")
 
@@ -187,6 +200,13 @@ categories_file.close()
 categories = categories_content["categories"]
 receivers = categories_content["receiver"]
 reasons = categories_content["reason"]
+
+#Load IBANs to ignore
+ignore_file = open('ignore.json')
+ignore_content = json.load(ignore_file)
+ignore_file.close()
+ignore_receivers = ignore_content["receiverIBAN"]
+ignore_reasons = ignore_content["reason"]
 
 #Go through all Exports and categorize them per prompt or per already assigned category if not already done previously
 directory = os.fsencode("Bank Exports")
