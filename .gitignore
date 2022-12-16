@@ -1,9 +1,14 @@
+#Personal Data
 /Bank Exports
 /Categorized Exports
-/private
-Analyse.xlsx
 categories.json
 ignore.json
+
+# Prototyping Space for new script ideas
+/private
+
+#Outputs
+*.xlsx
 
 #Open Excel
 ~$**

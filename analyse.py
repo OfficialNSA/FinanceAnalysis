@@ -163,6 +163,23 @@ def analyse_month(data):
 
     return return_value
 
+def category_filter(month_data, category_data):
+    
+    #Delete all unwanted information so that it doesn't appear after grouping
+    month_data = month_data.drop(['Bezeichnung Auftragskonto', 'IBAN Auftragskonto', 'BIC Auftragskonto', 'Bankname Auftragskonto', 'Valutadatum', 'BIC (SWIFT-Code) Zahlungsbeteiligter', 'Buchungstext', 'Waehrung', 'Saldo nach Buchung', 'Bemerkung', 'Kategorie', 'Steuerrelevant', 'Glaeubiger ID', 'Mandatsreferenz'], axis=1)
+
+    unique_categories = list(month_data["category"].unique())
+    unique_categories.remove("ignore")
+
+    for category in unique_categories:
+        try:
+            category_data[category] = pd.concat([category_data[category], month_data[month_data["category"] == category]], ignore_index=True)
+        except KeyError:
+            category_data[category] = month_data[month_data["category"] == category]
+        
+    return category_data
+
+
 #For European number notation
 locale.setlocale(locale.LC_NUMERIC, "de")
 
@@ -174,6 +191,15 @@ except:
 
 book = Workbook()
 book.save("Analyse.xlsx")
+
+# Create the Excel from scratch, makes the software easier to understand/maintain
+try:
+    os.remove("Kategorien.xlsx")
+except:
+    pass
+
+book = Workbook()
+book.save("Kategorien.xlsx")
 
 # Create files and directories if they are not there already
 
@@ -237,14 +263,20 @@ categories_file.close()
 directory = os.fsencode("Categorized Exports")
 
 complete_data = {}
+category_data = {}
 
 for file in os.listdir(directory):
     
     filename = os.fsdecode(file)
 
     month_data = pd.read_csv(f"Categorized Exports/{filename}")
-    
+
+    category_data = category_filter(month_data, category_data)
+
     complete_data[filename] = analyse_month(month_data)
+    
+# Here ok
+# print(complete_data["2021.11.csv"]["income"])
 
 sum = pd.DataFrame()
 month_sums = []
@@ -254,7 +286,48 @@ if len(complete_data) == 0:
     print("\nEs konnten keine Daten gefunden werden, bitte Die Bankauszüge im csv Format in 'Bank Exports' ablegen")
     exit()
 
+book = load_workbook("Kategorien.xlsx")
+writer = pd.ExcelWriter("Kategorien.xlsx", engine="openpyxl")
+writer.book = book
+
+for category in category_data.keys():
+    
+    single_category_data = category_data[category]
+
+    single_category_data = single_category_data.sort_values("Betrag")
+    
+    columns_titles = ["Buchungstag", "Name Zahlungsbeteiligter", "Betrag", "Verwendungszweck", "IBAN Zahlungsbeteiligter", "category"]
+    single_category_data = single_category_data.reindex(columns=columns_titles)
+    
+    single_category_data.to_excel(writer, sheet_name=category, startrow=0, startcol=0, index=None)
+    
+    book = writer.book
+    
+    # Default Sheet delete
+    try:
+        del book['Sheet']
+    except KeyError:
+        pass
+    
+    sheet = book[category]
+
+    for i in range(1, 7):
+        sheet.column_dimensions[get_column_letter(i)].auto_size = True
+
+book.save("Kategorien.xlsx")
+
+writer.close()
+
 for key in complete_data.keys():
+    
+    # Here ok
+    # print(complete_data["2021.11.csv"]["income"])
+
+    # Sum up cost and income for every month to compare in timeline
+    month_sums.append(pd.Series(data={
+        "income":complete_data[key]["income"].sum().get("Betrag"),
+        "cost":complete_data[key]["cost"].sum().get("Betrag")},
+        name=key.replace(".csv", "")))
 
     if(sum.empty):
         # Fill the DataFrame with some data (income chosen arbitrary)
@@ -266,6 +339,7 @@ for key in complete_data.keys():
                 sum.loc[category] = sum.loc[category] + complete_data[key]["cost"].loc[category]
             except KeyError:
                 sum.loc[category] = complete_data[key]["cost"].loc[category]
+                
     else:
         # Add the rest of the data per category. If the category isn't there yet, append it
         for category in complete_data[key]["income"].index.values:
@@ -281,10 +355,11 @@ for key in complete_data.keys():
             except KeyError:
                 sum.loc[category] = complete_data[key]["cost"].loc[category]
 
-    # Sum up cost and income for every month to compare in timeline
-    month_sums.append(pd.Series(data={"income":complete_data[key]["income"].sum().get("Betrag"),"cost":complete_data[key]["cost"].sum().get("Betrag")}, name=key.replace(".csv", "")))
+    # Here not ok
+    # print(complete_data[key]["income"])
 
 month_sums = pd.DataFrame(month_sums)
+
 month_sums["cost"] = -month_sums["cost"]
 
 sum = sum.groupby("category").sum().sort_values("Betrag")
